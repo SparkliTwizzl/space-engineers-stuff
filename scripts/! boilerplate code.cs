@@ -6,6 +6,15 @@ int updateFrequency = 10; // 1, 10, 100
 
 
 
+#region defines
+const bool CRITICAL = true;
+const bool NONCRITICAL = false;
+const bool SHOULD_SUCCEED = true;
+const bool SHOULD_FAIL = false;
+#endregion defines
+
+
+
 #region enums
 enum AIRLOCK_STATE
 {
@@ -33,9 +42,9 @@ struct TextPanelFormat
 #region classes
 class ScriptReporter
 {
-    int m_warningCount;
-    int m_errorCount;
-    string m_report;
+    int m_errorCount = 0;
+    int m_warningCount = 0;
+    string m_report = "";
 
 
 
@@ -51,48 +60,48 @@ class ScriptReporter
         m_report = "";
     }
 
-    public int GetWarningCount()
-    {
-        return m_warningCount;
-    }
     public int GetErrorCount()
     {
         return m_errorCount;
+    }
+    public int GetWarningCount()
+    {
+        return m_warningCount;
     }
     public string GetReport()
     {
         return m_errorCount + " SCRIPT ERRORS\n"
             + m_warningCount + " SCRIPT WARNINGS\n"
-            + (WarningsReported() || ErrorsReported() ? "(make sure block ownership is set correctly)\n" : "")
+            + (WarningsWereReported() || ErrorsWereReported() ? "(make sure block ownership is set correctly)\n" : "")
             + m_report;
     }
 
+    public void ReportError(string _msg)
+    {
+        m_report += "-- ERROR " + ++m_errorCount + ": " + _msg + "\n";
+    }
+    public void ReportWarning(string _msg)
+    {
+        m_report += "-- WARNING " + ++m_warningCount + ": " + _msg + "\n";        
+    }
     public void ReportInfo(string _msg)
     {
         m_report += _msg + "\n";
     }
-    public void ReportWarning(string _msg)
-    {
-        m_report += "-- WARNING #" + ++m_warningCount + ": " + _msg + "\n";        
-    }
-    public void ReportError(string _msg)
-    {
-        m_report += "-- ERROR #" + ++m_errorCount + ": " + _msg + "\n";
-    }
 
-    public bool WarningsWereReported()
-    {
-        return (m_warningCount > 0);
-    }
     public bool ErrorsWereReported()
     {
         return (m_errorCount > 0);
+    }
+    public bool WarningsWereReported()
+    {
+        return (m_warningCount > 0);
     }
 }
 
 class DeferredActions
 {
-    List<Action> m_actions;
+    List<Action> m_actions = null;
 
 
 
@@ -129,18 +138,95 @@ class DeferredActions
         Until();
     }
 }
+
+class TestSystem
+{
+    ScriptReporter m_reporter = null;
+    int m_numTests = 0;
+    int m_numPasses = 0;
+    int m_numErrorsExpected = 0;
+    int m_numWarningsExpected = 0;
+    int m_storeErrorCount = 0;
+    int m_storeWarningCount = 0;
+
+
+
+    void StoreErrorCount()
+    {
+        m_storeErrorCount = m_reporter.GetErrorCount();
+    }
+    void StoreWarningCount()
+    {
+        m_storeWarningCount = m_reporter.GetWarningCount();
+    }
+
+    int GetTestBatchErrorCount()
+    {
+        return m_reporter.GetErrorCount() - m_storeErrorCount;
+    }
+    int GetTestBatchWarningCount()
+    {
+        return m_reporter.GetWarningCount() - m_storeWarningCount;
+    }
+
+    void StartTestBatch(string _batchName)
+    {
+        StoreErrorCount();
+        StoreWarningCount();
+        m_numTests = 0;
+        m_numPasses = 0;
+        m_numWarningsExpected = 0;
+        m_numErrorsExpected = 0;
+        m_reporter.ReportInfo("\n--------------------\n< START TEST BATCH >\n" + _batchName);
+    }
+    void EndTestBatch(string _batchName)
+    {
+        m_reporter.ReportInfo("\n< END TEST BATCH >\n" + _batchName
+            + "\n" + m_numTests + " TESTS, " + m_numPasses + " PASSED"
+            + "\n    (" + GetTestBatchErrorCount() + " ERRORS, " + m_numErrorsExpected + " EXPECTED)"
+            + "\n    (" + GetTestBatchWarningCount() + " WARNINGS, " + m_numWarningsExpected + " EXPECTED)"
+            + "\n--------------------");
+    }
+
+
+
+    public TestSystem(ScriptReporter _reporter)
+    {
+        m_reporter = _reporter;
+    }
+
+    public void Test(string _desc, bool _isCritical, bool _expectedResult, Func<bool> _test)
+    {
+        ++m_numTests;
+        m_reporter.ReportInfo("\n----> TEST " + m_numTests + ": " + _desc + " ; should " + (_expectedResult == true ? "succeed" : "fail"));
+        if (_expectedResult == SHOULD_FAIL)
+        {
+            if (_isCritical)
+                ++m_numErrorsExpected;
+            else
+                ++m_numWarningsExpected;
+        }
+        if (_test() == _expectedResult)
+            ++m_numPasses;
+    }
+    public void RunTestBatch(string _batchName, Action _tests)
+    {
+        StartTestBatch(_batchName);
+        _tests();
+        EndTestBatch(_batchName);
+    }
+}
 #endregion classes
 
 
 
 #region globals
 // boilerplate globals
-List<IMyTerminalBlock> g_blockList = new List<IMyTerminalBlock>(100);
-IMyBlockGroup g_blockGroup = null;
-ScriptReporter g_reporter = new ScriptReporter();
-DeferredActions g_defers = new DeferredActions();
-const bool CRITICAL = true;
-const bool NONCRITICAL = false;
+static List<IMyTerminalBlock> g_blockList = new List<IMyTerminalBlock>(100);
+static IMyBlockGroup g_blockGroup = null;
+static ScriptReporter g_reporter = new ScriptReporter();
+static DeferredActions g_defers = new DeferredActions();
+static TestSystem g_testSystem = new TestSystem(g_reporter);
 // script globals
 #endregion globals
 
