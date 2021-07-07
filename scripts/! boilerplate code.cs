@@ -7,8 +7,6 @@ int updateFrequency = 10; // 1, 10, 100
 
 
 #region defines
-const bool CRITICAL = true;
-const bool NONCRITICAL = false;
 const bool SHOULD_SUCCEED = true;
 const bool SHOULD_FAIL = false;
 #endregion defines
@@ -141,52 +139,23 @@ class DeferredActions
 
 class TestSystem
 {
+    public struct Test
+    {
+        public string desc;
+        public bool expectedResult;
+        public int expectedErrors;
+        public int expectedWarnings;
+        public Func<bool> Logic;
+    }
+
+
+
     ScriptReporter m_reporter = null;
     int m_numTests = 0;
     int m_numPasses = 0;
-    int m_numErrorsExpected = 0;
-    int m_numWarningsExpected = 0;
-    int m_storeErrorCount = 0;
-    int m_storeWarningCount = 0;
 
-
-
-    void StoreErrorCount()
-    {
-        m_storeErrorCount = m_reporter.GetErrorCount();
-    }
-    void StoreWarningCount()
-    {
-        m_storeWarningCount = m_reporter.GetWarningCount();
-    }
-
-    int GetTestBatchErrorCount()
-    {
-        return m_reporter.GetErrorCount() - m_storeErrorCount;
-    }
-    int GetTestBatchWarningCount()
-    {
-        return m_reporter.GetWarningCount() - m_storeWarningCount;
-    }
-
-    void StartTestBatch(string _batchName)
-    {
-        StoreErrorCount();
-        StoreWarningCount();
-        m_numTests = 0;
-        m_numPasses = 0;
-        m_numWarningsExpected = 0;
-        m_numErrorsExpected = 0;
-        m_reporter.ReportInfo("\n--------------------\n< START TEST BATCH >\n" + _batchName);
-    }
-    void EndTestBatch(string _batchName)
-    {
-        m_reporter.ReportInfo("\n< END TEST BATCH >\n" + _batchName
-            + "\n" + m_numTests + " TESTS, " + m_numPasses + " PASSED"
-            + "\n    (" + GetTestBatchErrorCount() + " ERRORS, " + m_numErrorsExpected + " EXPECTED)"
-            + "\n    (" + GetTestBatchWarningCount() + " WARNINGS, " + m_numWarningsExpected + " EXPECTED)"
-            + "\n--------------------");
-    }
+    const string batchSeparator = "------------------------------";
+    const string testSeparator = "---------------";
 
 
 
@@ -195,25 +164,44 @@ class TestSystem
         m_reporter = _reporter;
     }
 
-    public void Test(string _desc, bool _isCritical, bool _expectedResult, Func<bool> _test)
+    public void RunTest(Test _test)
     {
         ++m_numTests;
-        m_reporter.ReportInfo("\n----> TEST " + m_numTests + ": " + _desc + " ; should " + (_expectedResult == true ? "succeed" : "fail"));
-        if (_expectedResult == SHOULD_FAIL)
-        {
-            if (_isCritical)
-                ++m_numErrorsExpected;
-            else
-                ++m_numWarningsExpected;
-        }
-        if (_test() == _expectedResult)
+        m_reporter.ReportInfo("| " + testSeparator + "\n|\n|   START TEST " + m_numTests + ":\n|     " + _test.desc);
+
+        int errorCountPre = m_reporter.GetErrorCount();
+        int warningCountPre = m_reporter.GetWarningCount();
+
+        bool resultMatch = _test.Logic() == _test.expectedResult;
+
+        int errorsCaused = m_reporter.GetErrorCount() - errorCountPre;
+        bool errorsMatch = errorsCaused == _test.expectedErrors;
+
+        int warningsCaused = m_reporter.GetWarningCount() - warningCountPre;
+        bool warningsMatch = warningsCaused == _test.expectedWarnings;
+
+        bool testPassed = resultMatch && errorsMatch && warningsMatch;
+        if (testPassed)
             ++m_numPasses;
+        m_reporter.ReportInfo("|   END TEST " + m_numTests + ":\n|     " + _test.desc
+            + "\n|     " + (testPassed ? "PASSED" : "FAILED")
+            + (!resultMatch ? "\n|     UNEXPECTED RESULT" : "")
+            + (!errorsMatch ? "\n|     " + _test.expectedErrors + " ERRORS EXPECTED, " + errorsCaused + " CAUSED" : "")
+            + (!warningsMatch ? "\n|     " + _test.expectedWarnings + " WARNINGS EXPECTED, " + warningsCaused + " CAUSED" : "")
+            );
     }
     public void RunTestBatch(string _batchName, Action _tests)
     {
-        StartTestBatch(_batchName);
+        m_numTests = 0;
+        m_numPasses = 0;
+        m_reporter.ReportInfo("\n| " + batchSeparator + "\n|\n| START TEST BATCH:\n|   " + _batchName);
+
         _tests();
-        EndTestBatch(_batchName);
+
+        m_reporter.ReportInfo(
+            "| " + testSeparator + "\n|\n| " + m_numTests + " TESTS, " + m_numPasses + " PASSED"
+            + "\n| END TEST BATCH:" + "\n|   " + _batchName
+            + "\n| " + batchSeparator);
     }
 }
 #endregion classes
