@@ -1,4 +1,4 @@
-﻿#region config
+#region config
 // ========== CONFIG ==========
 int updateFrequency = 10; // 1, 10, 100
 // ========== CONFIG ==========
@@ -38,6 +38,84 @@ struct TextPanelFormat
 #endregion structs
 
 #region classes
+class DeferredActionSystem
+{
+    List<Action> m_actions = null;
+
+
+
+    public DeferredActionSystem()
+    {
+        m_actions = new List<Action>();
+    }
+
+    public void Clear()
+    {
+        m_actions.Clear();
+    }
+
+    public int Count()
+    {
+        return m_actions.Count;
+    }
+    public void Defer(Action _action)
+    {
+        m_actions.Add(_action);
+    }
+    public void Until()
+    {
+        int count = m_actions.Count - 1;
+        if (count > -1)
+        {
+            m_actions[count]();
+            m_actions.Remove(m_actions[count]);
+        }
+    }
+    public void Until(Action _action)
+    {
+        _action();
+        Until();
+    }
+}
+
+class IntermittentAction
+{
+    /* Allows logic to be stored and only executed once every n updates rather than every update */
+
+    Action Logic = null;
+    int frequency = 0;
+    int counter = 0;
+
+
+
+    public IntermittentAction(Action _logic, int _freq)
+    {
+        Logic = _logic;
+        frequency = _freq;
+        counter = 0;
+    }
+
+    public void SetLogic(Action _logic)
+    {
+        Logic = _logic;
+        counter = 0;
+    }
+    public void SetFrequency(int _freq)
+    {
+        frequency = _freq;
+        counter = 0;
+    }
+    public void Run()
+    {
+        ++counter;
+        if (counter >= frequency)
+        {
+            counter = 0;
+            Logic();
+        }
+    }
+}
+
 class ScriptReporter
 {
     int m_errorCount = 0;
@@ -94,46 +172,6 @@ class ScriptReporter
     public bool WarningsWereReported()
     {
         return (m_warningCount > 0);
-    }
-}
-
-class DeferredActions
-{
-    List<Action> m_actions = null;
-
-
-
-    public DeferredActions()
-    {
-        m_actions = new List<Action>();
-    }
-
-    public void Clear()
-    {
-        m_actions.Clear();
-    }
-
-    public int Count()
-    {
-        return m_actions.Count;
-    }
-    public void Defer(Action _action)
-    {
-        m_actions.Add(_action);
-    }
-    public void Until()
-    {
-        int count = m_actions.Count - 1;
-        if (count > -1)
-        {
-            m_actions[count]();
-            m_actions.Remove(m_actions[count]);
-        }
-    }
-    public void Until(Action _action)
-    {
-        _action();
-        Until();
     }
 }
 
@@ -212,8 +250,8 @@ class TestSystem
 // boilerplate globals
 static List<IMyTerminalBlock> g_blockList = new List<IMyTerminalBlock>(100);
 static IMyBlockGroup g_blockGroup = null;
+static DeferredActionSystem g_defers = new DeferredActionSystem();
 static ScriptReporter g_reporter = new ScriptReporter();
-static DeferredActions g_defers = new DeferredActions();
 static TestSystem g_testSystem = new TestSystem(g_reporter);
 // script globals
 #endregion globals
