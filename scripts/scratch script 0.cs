@@ -1,6 +1,8 @@
 #region defines
 const bool SHOULD_SUCCEED = true;
 const bool SHOULD_FAIL = false;
+const bool TREAT_FAIL_AS_ERROR = true;
+const bool TREAT_FAIL_AS_WARNING = false;
 #endregion defines
 
 
@@ -49,6 +51,13 @@ class ScriptReporter
     public void ReportWarning(string _msg)
     {
         m_report += "-- WARNING " + ++m_warningCount + ": " + _msg + "\n";        
+    }
+    public void ReportProblem(string _msg, bool _treatAsError)
+    {
+        if (_treatAsError)
+            ReportError(_msg);
+        else
+            ReportWarning(_msg);
     }
     public void ReportInfo(string _msg)
     {
@@ -210,12 +219,12 @@ string GetBlockTypeName<T>()
 }
 
 
-bool GetBlockGroupWithName(string _groupName)
+bool GetBlockGroupWithName(string _groupName, bool _treatFailAsError = true)
 {
     g_blockGroup = GridTerminalSystem.GetBlockGroupWithName(_groupName);
     if (g_blockGroup == null)
     {
-        g_reporter.ReportError("no block group with name " + _groupName + " found");
+        g_reporter.ReportProblem("no block group with name " + _groupName + " found", _treatFailAsError);
         return false;
     }
     return true;
@@ -240,13 +249,13 @@ T GetFirstMatchingBlock<T, Tcond>(Func<T, Tcond, bool> _blockIsMatch, Tcond _con
 }
 
 
-bool GetBlocksOfType<T>() where T : class
+bool GetBlocksOfType<T>(bool _treatFailAsError = true) where T : class
 {
     g_blockList.Clear();
     GridTerminalSystem.GetBlocksOfType<T>(g_blockList, FilterBlocks);
     if (g_blockList.Count == 0)
     {
-        g_reporter.ReportError("no " + GetBlockTypeName<T>() + "s found");
+        g_reporter.ReportProblem("no " + GetBlockTypeName<T>() + "s found", _treatFailAsError);
         return false;
     }
     return true;
@@ -307,15 +316,64 @@ T GetFirstBlockInGroupIncludingName<T>(string _blockName, string _groupName) whe
 
 
 #region script functions
-public Program()
+void RunTests()
 {
-    Runtime.UpdateFrequency = UpdateFrequency.Update10;
-}
-void Main(string _arg)
-{
-    Reset();
+    g_testSystem.RunTestBatch("GetBlocksOfType", () =>
+    {
+        g_testSystem.RunTest(new TestSystem.Test
+        {
+            desc = "get nonexistent blocks, fail is error",
+            expectedResult = SHOULD_FAIL,
+            expectedErrors = 1,
+            expectedWarnings = 0,
+            Logic = () => { return GetBlocksOfType<IMySolarPanel>(TREAT_FAIL_AS_ERROR); },
+        });
+        g_testSystem.RunTest(new TestSystem.Test
+        {
+            desc = "get nonexistent blocks, fail is warning",
+            expectedResult = SHOULD_FAIL,
+            expectedErrors = 0,
+            expectedWarnings = 1,
+            Logic = () => { return GetBlocksOfType<IMySolarPanel>(TREAT_FAIL_AS_WARNING); },
+        });
+        g_testSystem.RunTest(new TestSystem.Test
+        {
+            desc = "get blocks",
+            expectedResult = SHOULD_SUCCEED,
+            expectedErrors = 0,
+            expectedWarnings = 0,
+            Logic = () => { return GetBlocksOfType<IMyTextPanel>(); },
+        });
+    });
 
-    #region tests
+    g_testSystem.RunTestBatch("GetBlockGroupWithName", () =>
+    {
+        g_testSystem.RunTest(new TestSystem.Test
+        {
+            desc = "get nonexistent group, fail is error",
+            expectedResult = SHOULD_FAIL,
+            expectedErrors = 1,
+            expectedWarnings = 0,
+            Logic = () => { return GetBlockGroupWithName("nonexistent", TREAT_FAIL_AS_ERROR); },
+        });
+        g_testSystem.RunTest(new TestSystem.Test
+        {
+            desc = "get nonexistent group, fail is warning",
+            expectedResult = SHOULD_FAIL,
+            expectedErrors = 0,
+            expectedWarnings = 1,
+            Logic = () => { return GetBlockGroupWithName("nonexistent", TREAT_FAIL_AS_WARNING); },
+        });
+        g_testSystem.RunTest(new TestSystem.Test
+        {
+            desc = "get group",
+            expectedResult = SHOULD_SUCCEED,
+            expectedErrors = 0,
+            expectedWarnings = 0,
+            Logic = () => { return GetBlockGroupWithName("GetGroup"); },
+        });
+    });
+
     g_testSystem.RunTestBatch("GetFirstBlock", () =>
     {
         g_testSystem.RunTest(new TestSystem.Test
@@ -467,8 +525,11 @@ void Main(string _arg)
     // g_testSystem.RunTestBatch("GetFirstBlockInGroupWithNameIncluding", () =>
     // {
     // });
-    #endregion tests
-
+}
+void Main(string _arg)
+{
+    Reset();
+    RunTests();
     Echo(g_reporter.GetReport());
     if (g_reporter.ErrorsWereReported())
         return;

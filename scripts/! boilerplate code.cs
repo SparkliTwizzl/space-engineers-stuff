@@ -491,31 +491,9 @@ void SetStateOfTextPanelList(List<IMyTextPanel> _panels, TextPanelFormat _format
 
 
 #region script functions
-// script constructor; called only on compile
-// use to initialize, load values, etc
-public Program()
+// script-specific functions
+bool AcquireBlocks()
 {
-    SetUpdateFrequency(updateFrequency);
-    g_blockList = new List<IMyTerminalBlock>();
-
-    // if (Storage.Length > 0)
-    // {
-    //     var parts = Storage.Split(';');
-    //     ...
-    // }
-}
-// save script state; called on world save or recompile
-public Save()
-{
-    // Storage = _val1 + ';' + _val2 + ...;
-}
-// main method; called every time script runs
-void Main(string _arg)
-{
-    Reset();
-
-    #region find blocks
-
     IMyTerminalBlock block = GetFirstBlock<IMyTerminalBlock>();
     IMyTerminalBlock block = GetFirstBlockWithExactName<IMyTerminalBlock>("block name");
     IMyTerminalBlock block = GetFirstBlockWithNameIncluding<IMyTerminalBlock>("block name");
@@ -647,10 +625,55 @@ void Main(string _arg)
     }
     else scriptReport += "group " + groupName + " not found\n";
 
-    #endregion find blocks
+    return false;
+}
+void RunTests()
+{
+    g_testSystem.RunTestBatch("Test batch name", () =>
+    {
+        g_testSystem.RunTest(new TestSystem.Test
+        {
+            desc = "test description",
+            expectedResult = BOOL,
+            expectedErrors = #,
+            expectedWarnings = #,
+            Logic = () => { return []; },
+        });
+    });
+}
 
+// script constructor; called only on compile
+// use to initialize, load values, etc
+public Program()
+{
+    SetUpdateFrequency(updateFrequency);
+    g_blockList = new List<IMyTerminalBlock>();
 
-    if (DisplayErrorReport())
+    // if (Storage.Length > 0)
+    // {
+    //     var parts = Storage.Split(';');
+    //     ...
+    // }
+}
+// save script state; called on world save or recompile
+public Save()
+{
+    // Storage = _val1 + ';' + _val2 + ...;
+}
+// main method; called every time script runs
+void Main(string _arg)
+{
+    Reset();
+
+    if (!AcquireBlocks())
+        g_reporter.ReportError("Acquiring blocks failed");
+    else
+    {
+        RunTests();
+    }    
+
+    Echo(g_reporter.GetReport());
+    if (g_reporter.ErrorsWereReported())
         return;
 
 
